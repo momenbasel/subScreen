@@ -7,7 +7,7 @@ This is a JS tool that lets you take screenshots of different hosts.
  
 ###### [*] In order to view the screenshots, you have to signup at (https://urlbox.io/signup/trial) and copy the API key.
 ###### If you didn't enter the API key, the Tool will open all URLs you entered on another browser tabs.
-
+###### View it online!  https://momenbasel.github.io/subScreen/screenshot.html
 
 
 
