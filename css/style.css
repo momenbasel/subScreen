@@ -1,0 +1,57 @@
+* {
+	margin: 0;
+	padding: 0;
+}
+body {
+	background: url(./background.jpg);
+}
+.text-center {
+	text-align: center;
+}
+
+.title {
+	margin-top: 20px;
+	font-size: 30px;
+	color: #64c9ed;
+}
+
+.form {
+	margin: auto;
+	width: 80%;
+}
+
+.form label {
+	font-size: 20px;
+	color: #64c9ed;
+}
+
+.form input[type="submit"] {
+	margin: auto;
+	display: table;
+	text-align: center;
+	background-color: #64c9ed;
+}
+.container {
+    background: #f9f9f9;
+}
+
+.flex-column {
+    max-width: 260px;
+}
+
+img {
+		max-width: 100%;
+		height: auto;
+}
+
+.scale {
+    transform: scaleY(1.05);
+    padding-top: 5px;
+}
+
+.domain {
+    color: #64c9ed;
+    position: relative;
+    left: -22%;
+    font-size: 19px;
+}
