@@ -30,6 +30,7 @@ body {
 	display: table;
 	text-align: center;
 	background-color: #64c9ed;
+    width: 20%;
 }
 .container {
     background: #f9f9f9;
