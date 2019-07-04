@@ -44,7 +44,6 @@
         <hr color="white">
         <p class="text-center title">Visual results</p>
         <p class="text-center title">You have to enter the token to view screenshot/s of subdomain/s entered</p>
-
         <div class="imageplace d-flex flex-row flex-wrap justify-content-center"></div>
 
         <script>
@@ -54,8 +53,11 @@
                     openAll();
                     return;
                 };
-
-                getImage(token);
+                if(confirm("minify the screenshots? (useful for a large number of hosts)")) {
+                    getImage(token,450,200);
+                }else{
+                    getImage(token);
+                }
             }
         </script>
 
