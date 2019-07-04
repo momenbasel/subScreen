@@ -3,13 +3,13 @@ var getAPItoken = function()
     return $(".APIToken").val();
 }
 
-let getImage = (key) => {
+let getImage = (key, width, height) => {
     let regex = /^https?:\/\//;
     let url = $('#list_urls').val().split('\n');
     for(let i = 0; i < url.length; i++)
     {
-        url[i] = url[i].replace(regex, '');
-        $(".imageplace").append(`<a href='http://${url[i]}'  target="_blank"><img class='img-fluid' alt="${url[i]}"  src='https://api.urlbox.io/v1/${key}/png?width=450&height=200&url=${url[i]}'/> </a><p class="domain">${url[i]}</p> <br><br>`);
+        url[i] = url[i].replace(regex, ''); 
+        $(".imageplace").append(`<a href='http://${url[i]}'  target="_blank"><img class='img-fluid' alt="${url[i]}"  src='https://api.urlbox.io/v1/${key}/png?width=${width}&height=${height}&url=${url[i]}'/> </a><p class="domain">${url[i]}</p> <br><br>`);
     }
 }
 
