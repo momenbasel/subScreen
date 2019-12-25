@@ -30,6 +30,7 @@ body {
 	display: table;
 	text-align: center;
 	background-color: #64c9ed;
+    width: 20%;
 }
 .container {
     background: #f9f9f9;
@@ -40,8 +41,25 @@ body {
 }
 
 img {
-		max-width: 100%;
-		height: auto;
+    margin: 5px;
+}
+
+div.imageplace  {
+	margin: 0 auto;
+	left: 80px;
+	margin: 30px 60px 45px;
+
+}
+
+.img-fluid {
+    height: auto;
+    margin-left: auto;
+    margin-right: auto;
+    display: block;
+    padding: 10px 10px;
+    position: relative;
+    border-radius: 10%;
+    width: 65%;
 }
 
 .scale {
@@ -52,6 +70,12 @@ img {
 .domain {
     color: #64c9ed;
     position: relative;
-    left: -22%;
+    display: block;
+    padding: 5px 5px;
     font-size: 19px;
+    margin: 0 auto;
+    height: fit-content;
+    width: 100%;
+    text-align: center;
 }
+
