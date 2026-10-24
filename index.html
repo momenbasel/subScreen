@@ -4,12 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Visual subdomain reconnaissance - screenshot subdomains at scale">
+  <link rel="canonical" href="https://www.moamenbasel.com/subScreen/">
+  <meta property="og:title" content="SubScreen - Visual Subdomain Reconnaissance">
+  <meta property="og:description" content="Turn a domain list into a searchable screenshot gallery. Import targets, compare results, and export a report.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.moamenbasel.com/subScreen/">
+  <meta property="og:image" content="https://www.moamenbasel.com/subScreen/css/logo.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="theme-color" content="#09090b">
   <title>SubScreen - Visual Subdomain Reconnaissance</title>
   <link rel="icon" type="image/png" href="css/logo.png">
   <link rel="preconnect" href="https://image.thum.io">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <a class="skip-link" href="#targets">Skip to targets</a>
   <div class="app">
     <header class="header">
       <div class="header-brand">
@@ -25,21 +34,25 @@
       </div>
     </header>
 
-    <section class="panel">
+    <main>
+    <noscript><style>.panel, .empty-state { display: none !important; }</style><section class="intro"><h2>JavaScript is required</h2><p>Enable JavaScript to import targets and build a screenshot gallery. <a href="https://github.com/momenbasel/subScreen#readme">Read the usage guide</a> for setup details.</p></section></noscript>
+    <section class="intro" aria-labelledby="intro-title"><h2 id="intro-title">See your targets at a glance.</h2><p>Paste a domain list, compare screenshots, and export the results. Everything starts here.</p></section>
+    <section class="panel" aria-label="Scan setup">
       <div class="input-row">
         <div class="input-group grow">
           <div class="label-row">
             <label for="targets">Targets</label>
-            <span class="target-count" id="target-count"></span>
+            <span class="target-count" id="target-count" aria-live="polite"></span>
           </div>
           <div class="textarea-wrap" id="drop-zone">
-            <textarea id="targets" rows="6" spellcheck="false"
+            <textarea id="targets" rows="6" spellcheck="false" aria-describedby="targets-help provider-help"
               placeholder="Paste subdomains, URLs, or drop a .txt file&#10;&#10;Supports: raw domains, subfinder, httpx, amass, nmap output&#10;Comma or newline separated - duplicates removed automatically"></textarea>
             <div class="drop-overlay" id="drop-overlay">Drop file here</div>
           </div>
         </div>
       </div>
 
+      <div class="import-row"><p id="targets-help">One URL per line, comma-separated domains, or output from subfinder, httpx, amass, and nmap.</p><button id="btn-import" class="btn btn-sm btn-ghost" type="button">Import file</button><input id="target-file" type="file" accept=".txt,.csv,.lst,.list" hidden></div>
       <div class="settings-row">
         <div class="input-group">
           <label for="provider">Provider</label>
@@ -52,7 +65,7 @@
 
         <div class="input-group" id="api-key-group" hidden>
           <label for="api-key">API Key</label>
-          <input type="text" id="api-key" placeholder="Enter API key" spellcheck="false" autocomplete="off">
+          <input type="password" id="api-key" placeholder="Enter API key" spellcheck="false" autocomplete="off">
         </div>
 
         <div class="input-group">
@@ -76,12 +89,13 @@
         </div>
       </div>
 
+      <p id="provider-help" class="provider-help">Screenshot providers receive the target URLs. Manual mode opens targets directly in your browser.</p>
       <div class="actions">
         <button id="btn-start" class="btn btn-primary">Start Scan</button>
         <button id="btn-clear" class="btn btn-ghost">Clear</button>
         <button id="btn-export" class="btn btn-ghost" disabled>Export Report</button>
         <button id="btn-copy" class="btn btn-ghost" hidden>Copy Domains</button>
-        <span class="hint">Ctrl+Enter to start</span>
+        <span class="hint">Ctrl / Cmd + Enter to start</span>
       </div>
     </section>
 
@@ -94,31 +108,36 @@
           <span class="stat stat-wait">Pending <strong id="stat-pending">0</strong></span>
         </div>
         <div class="stats-right">
-          <input type="text" id="search" class="search-input" placeholder="Filter domains..." spellcheck="false">
+          <label for="search" class="sr-only">Filter screenshot domains</label>
+          <input type="search" id="search" class="search-input" placeholder="Filter domains..." spellcheck="false">
           <button id="btn-retry-failed" class="btn btn-sm btn-ghost" hidden>Retry Failed</button>
-          <div class="filters">
-            <button class="filter active" data-filter="all">All</button>
-            <button class="filter" data-filter="loaded">Loaded</button>
-            <button class="filter" data-filter="failed">Failed</button>
-            <button class="filter" data-filter="pending">Pending</button>
+          <div class="filters" role="group" aria-label="Filter by screenshot status">
+            <button class="filter active" data-filter="all" aria-pressed="true">All</button>
+            <button class="filter" data-filter="loaded" aria-pressed="false">Loaded</button>
+            <button class="filter" data-filter="failed" aria-pressed="false">Failed</button>
+            <button class="filter" data-filter="pending" aria-pressed="false">Pending</button>
           </div>
         </div>
       </div>
-      <div class="progress-bar">
+      <div class="progress-bar" id="scan-progress" role="progressbar" aria-label="Screenshot progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div class="progress-fill" id="progress-fill"></div>
       </div>
     </section>
 
-    <section class="gallery" id="gallery"></section>
+    <section class="gallery" id="gallery" aria-label="Screenshot results"></section>
+    <p id="filter-empty" class="filter-empty" role="status" hidden>No screenshots match this filter. Try another status or domain.</p>
+    <p id="scan-status" class="sr-only" role="status" aria-live="polite"></p>
 
     <div class="empty-state" id="empty-state">
       <div class="empty-icon"></div>
       <p class="empty-title">No screenshots yet</p>
       <p class="empty-sub">Enter target domains above and click Start Scan</p>
     </div>
+    </main>
+    <footer class="app-footer"><a href="https://github.com/momenbasel/subScreen#readme">Usage guide</a><a href="https://github.com/momenbasel/subScreen/issues">Report a problem</a><span>No account required</span></footer>
   </div>
 
-  <div class="lightbox" id="lightbox" hidden>
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-labelledby="lb-domain" hidden>
     <div class="lightbox-backdrop" id="lb-backdrop"></div>
     <button class="lightbox-close" id="lb-close" aria-label="Close">&times;</button>
     <div class="lightbox-body">
@@ -135,7 +154,7 @@
     </div>
   </div>
 
-  <div class="toast-container" id="toast-container"></div>
+  <div class="toast-container" id="toast-container" role="status" aria-live="polite"></div>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -38,6 +38,7 @@
   var state = {
     targets: [],
     results: new Map(),
+    captures: new Map(),
     provider: 'thum',
     apiKey: '',
     size: 'md',
@@ -45,8 +46,12 @@
     filter: 'all',
     search: '',
     lbIndex: -1,
-    scanning: false
+    scanning: false,
+    scanId: 0
   };
+
+  var lastLightboxFocus = null;
+  var storageWarningShown = false;
 
   var $ = function(s) { return document.querySelector(s); };
   var $$ = function(s) { return document.querySelectorAll(s); };
@@ -143,21 +148,21 @@
   }
 
   function updateStats() {
-    var loaded = 0, failed = 0, pending = 0;
+    var loaded = 0, failed = 0;
     state.results.forEach(function(s) {
       if (s === 'loaded') loaded++;
       else if (s === 'failed') failed++;
-      else pending++;
     });
     var total = state.targets.length;
 
     $('#stat-total').textContent = total;
     $('#stat-loaded').textContent = loaded;
     $('#stat-failed').textContent = failed;
-    $('#stat-pending').textContent = pending;
+    $('#stat-pending').textContent = Math.max(0, total - loaded - failed);
 
     var pct = total > 0 ? ((loaded + failed) / total) * 100 : 0;
     $('#progress-fill').style.width = pct + '%';
+    $('#scan-progress').setAttribute('aria-valuenow', String(Math.round(pct)));
 
     var retryBtn = $('#btn-retry-failed');
     if (retryBtn) retryBtn.hidden = failed === 0;
@@ -165,6 +170,7 @@
     if (loaded + failed === total && total > 0) {
       state.scanning = false;
       syncScanButton();
+      $('#scan-status').textContent = 'Scan complete: ' + loaded + ' loaded, ' + failed + ' failed.';
     }
   }
 
@@ -191,14 +197,17 @@
     });
     $$('.filter').forEach(function(b) {
       b.classList.toggle('active', b.dataset.filter === state.filter);
+      b.setAttribute('aria-pressed', String(b.dataset.filter === state.filter));
     });
+    $('#filter-empty').hidden = !state.targets.length || Object.keys(visible).length > 0;
   }
 
   function createCard(url, index) {
+    var scanId = state.scanId;
     var domain = getDomain(url);
     var imgSrc = getScreenshotUrl(url);
 
-    var img = el('img', { loading: 'lazy', alt: domain, draggable: 'false' });
+    var img = el('img', { loading: 'lazy', alt: 'Screenshot of ' + domain + '. Open preview', draggable: 'false', tabindex: '0', role: 'button', onkeydown: function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLightbox(index); } } });
     var skeleton = el('div', { className: 'card-skeleton' });
     var statusDot = el('span', { className: 'card-status-dot' });
 
@@ -215,7 +224,7 @@
         className: 'card-action',
         onclick: function(e) {
           e.stopPropagation();
-          navigator.clipboard.writeText(url).then(function() { toast('URL copied'); });
+          copyText(url, 'URL copied');
         }
       }, 'Copy')
     );
@@ -236,18 +245,23 @@
     }, imgWrap, info);
 
     img.onload = function() {
+      if (scanId !== state.scanId) return;
       card.dataset.status = 'loaded';
       state.results.set(url, 'loaded');
       updateStats();
+      applyFilter();
     };
 
     img.onerror = function() {
+      if (scanId !== state.scanId) return;
       card.dataset.status = 'failed';
       state.results.set(url, 'failed');
       updateStats();
+      applyFilter();
     };
 
     state.results.set(url, 'pending');
+    state.captures.set(url, { provider: state.provider, src: imgSrc });
     img.src = imgSrc;
 
     return card;
@@ -267,7 +281,9 @@
     var img = card.querySelector('img');
     var base = getScreenshotUrl(url);
     var sep = base.indexOf('?') > -1 ? '&' : '?';
-    img.src = base + sep + '_t=' + Date.now();
+    var source = base + sep + '_t=' + Date.now();
+    state.captures.set(url, { provider: state.provider, src: source });
+    img.src = source;
   }
 
   function retryAllFailed() {
@@ -298,13 +314,16 @@
       return;
     }
 
+    var scanId = ++state.scanId;
     state.targets = targets;
     state.results.clear();
+    state.captures.clear();
     state.scanning = true;
     state.filter = 'all';
     state.search = '';
 
     syncScanButton();
+    $('#scan-status').textContent = 'Loading screenshots for ' + targets.length + ' targets.';
     $('#stats-bar').hidden = false;
     $('#btn-export').disabled = false;
     $('#btn-copy').hidden = false;
@@ -321,6 +340,7 @@
     var i = 0;
 
     function processBatch() {
+      if (scanId !== state.scanId) return;
       var end = Math.min(i + BATCH, targets.length);
       var fragment = document.createDocumentFragment();
       for (var j = i; j < end; j++) {
@@ -352,8 +372,12 @@
   }
 
   function clearResults() {
+    state.scanId++;
+    $('#filter-empty').hidden = true;
+    $('#scan-status').textContent = 'Results cleared.';
     state.targets = [];
     state.results.clear();
+    state.captures.clear();
     state.scanning = false;
     state.filter = 'all';
     state.search = '';
@@ -382,11 +406,14 @@
     var url = state.targets[index];
     if (!url) return;
 
+    lastLightboxFocus = document.activeElement;
     state.lbIndex = index;
     var lb = $('#lightbox');
     lb.hidden = false;
     document.body.style.overflow = 'hidden';
     updateLightboxContent();
+    $('.app').inert = true;
+    $('#lb-close').focus();
     requestAnimationFrame(function() { lb.classList.add('active'); });
   }
 
@@ -394,10 +421,10 @@
     var lb = $('#lightbox');
     lb.classList.remove('active');
     document.body.style.overflow = '';
-    setTimeout(function() {
-      lb.hidden = true;
-      state.lbIndex = -1;
-    }, 200);
+    $('.app').inert = false;
+    if (lastLightboxFocus && lastLightboxFocus.isConnected) lastLightboxFocus.focus();
+    lb.hidden = true;
+    state.lbIndex = -1;
   }
 
   function navigateLightbox(dir) {
@@ -420,7 +447,9 @@
     var visible = getVisibleIndices();
     var pos = visible.indexOf(state.lbIndex) + 1;
 
-    $('#lb-img').src = getScreenshotUrl(url);
+    var capture = state.captures.get(url);
+    $('#lb-img').src = capture ? capture.src : '';
+    $('#lb-img').alt = 'Screenshot of ' + getDomain(url);
     $('#lb-domain').textContent = getDomain(url);
     $('#lb-counter').textContent = pos + ' / ' + visible.length;
     $('#lb-open').href = url;
@@ -440,15 +469,19 @@
     var cards = state.targets.map(function(url) {
       var domain = getDomain(url);
       var status = state.results.get(url);
-      var imgSrc = getScreenshotUrl(url);
+      var capture = state.captures.get(url);
+      var imgSrc = capture && capture.provider !== 'urlbox' ? capture.src : '';
 
-      if (status === 'loaded') {
+      if (status === 'loaded' && imgSrc) {
         return '<div class="item"><a href="' + escapeHtml(url) + '" target="_blank"><img src="' + escapeHtml(imgSrc) + '" alt="' + escapeHtml(domain) + '" loading="lazy"></a><div class="meta"><a href="' + escapeHtml(url) + '" target="_blank">' + escapeHtml(domain) + '</a><span class="badge ok">OK</span></div></div>';
       }
-      return '<div class="item"><div class="placeholder"></div><div class="meta"><a href="' + escapeHtml(url) + '" target="_blank">' + escapeHtml(domain) + '</a><span class="badge fail">FAIL</span></div></div>';
+      var omitted = status === 'loaded' && capture && capture.provider === 'urlbox';
+      var label = omitted ? 'Preview excluded to protect your API key' : '';
+      var badge = status === 'loaded' ? 'OK' : status === 'failed' ? 'FAIL' : 'PENDING';
+      return '<div class="item"><div class="placeholder">' + label + '</div><div class="meta"><a href="' + escapeHtml(url) + '" target="_blank">' + escapeHtml(domain) + '</a><span class="badge ' + (status === 'loaded' ? 'ok' : 'fail') + '">' + badge + '</span></div></div>';
     }).join('\n');
 
-    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>SubScreen Report - ' + escapeHtml(date) + '</title>\n<style>\n*{margin:0;padding:0;box-sizing:border-box}\nbody{font-family:system-ui,sans-serif;background:#09090b;color:#fafafa;padding:32px 24px}\nh1{font-size:22px;font-weight:700;letter-spacing:-0.02em}\n.sub{color:#a1a1aa;font-size:13px;margin:6px 0 28px}\n.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px}\n.item{background:#18181b;border:1px solid #27272a;border-radius:10px;overflow:hidden}\n.item img{width:100%;display:block}\n.placeholder{height:180px;background:#111114;display:flex;align-items:center;justify-content:center;color:#3f3f46;font-size:12px}\n.placeholder::after{content:"Screenshot unavailable"}\n.meta{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-family:monospace;border-top:1px solid #27272a}\n.meta a{color:#60a5fa;text-decoration:none}\n.meta a:hover{text-decoration:underline}\n.badge{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:system-ui,sans-serif;text-transform:uppercase;letter-spacing:0.05em}\n.badge.ok{background:rgba(34,197,94,0.12);color:#22c55e}\n.badge.fail{background:rgba(239,68,68,0.12);color:#ef4444}\n</style>\n</head>\n<body>\n<h1>SubScreen Report</h1>\n<p class="sub">' + escapeHtml(date) + ' ' + escapeHtml(time) + ' &middot; ' + state.targets.length + ' targets &middot; ' + loaded + ' captured &middot; ' + failed + ' failed</p>\n<div class="grid">\n' + cards + '\n</div>\n</body>\n</html>';
+    var html = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>SubScreen Report - ' + escapeHtml(date) + '</title>\n<style>\n*{margin:0;padding:0;box-sizing:border-box}\nbody{font-family:system-ui,sans-serif;background:#09090b;color:#fafafa;padding:32px 24px}\nh1{font-size:22px;font-weight:700;letter-spacing:-0.02em}\n.sub{color:#a1a1aa;font-size:13px;margin:6px 0 28px}\n.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:16px}\n.item{background:#18181b;border:1px solid #27272a;border-radius:10px;overflow:hidden}\n.item img{width:100%;display:block}\n.placeholder{height:180px;background:#111114;display:flex;align-items:center;justify-content:center;color:#a1a1aa;font-size:12px;padding:20px;text-align:center}\n.placeholder:empty::after{content:"Screenshot unavailable"}\n.meta{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-family:monospace;border-top:1px solid #27272a}\n.meta a{color:#60a5fa;text-decoration:none}\n.meta a:hover{text-decoration:underline}\n.badge{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:system-ui,sans-serif;text-transform:uppercase;letter-spacing:0.05em}\n.badge.ok{background:rgba(34,197,94,0.12);color:#22c55e}\n.badge.fail{background:rgba(239,68,68,0.12);color:#ef4444}\n</style>\n</head>\n<body>\n<h1>SubScreen Report</h1>\n<p class="sub">' + escapeHtml(date) + ' ' + escapeHtml(time) + ' &middot; ' + state.targets.length + ' targets &middot; ' + loaded + ' captured &middot; ' + failed + ' failed</p>\n<div class="grid">\n' + cards + '\n</div>\n</body>\n</html>';
 
     var blob = new Blob([html], { type: 'text/html' });
     var a = document.createElement('a');
@@ -456,14 +489,18 @@
     a.download = 'subscreen-report-' + date + '.html';
     a.click();
     URL.revokeObjectURL(a.href);
-    toast('Report exported', 'success');
+    var hasPrivatePreviews = Array.from(state.captures.values()).some(function(capture) { return capture.provider === 'urlbox'; });
+    toast(hasPrivatePreviews ? 'Report exported. Urlbox previews excluded to protect your API key.' : 'Report exported', 'success');
   }
 
   function copyDomains() {
     var domains = state.targets.map(getDomain).join('\n');
-    navigator.clipboard.writeText(domains).then(function() {
-      toast('Domains copied to clipboard', 'success');
-    });
+    copyText(domains, 'Domains copied to clipboard');
+  }
+
+  function copyText(value, message) {
+    if (!navigator.clipboard) { toast('Clipboard unavailable. Copy the text manually.', 'error'); return; }
+    navigator.clipboard.writeText(value).then(function() { toast(message, 'success'); }).catch(function() { toast('Copy blocked by the browser. Copy the text manually.', 'error'); });
   }
 
   function toast(msg, type) {
@@ -499,36 +536,43 @@
       var file = e.dataTransfer.files[0];
       if (!file) return;
 
-      var validTypes = ['text/plain', 'text/csv', 'application/octet-stream', ''];
-      var validExts = ['.txt', '.csv', '.lst', '.list'];
-      var ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
-      if (validTypes.indexOf(file.type) === -1 && validExts.indexOf(ext) === -1) {
-        toast('Unsupported file type', 'error');
-        return;
-      }
-
-      var reader = new FileReader();
-      reader.onload = function() {
-        var textarea = $('#targets');
-        var existing = textarea.value.trim();
-        textarea.value = existing ? existing + '\n' + reader.result : reader.result;
-        updateTargetCount();
-        toast('Loaded ' + file.name, 'success');
-      };
-      reader.readAsText(file);
+      importFile(file);
     });
+  }
+
+  function importFile(file) {
+    if (!file) return;
+    var validTypes = ['text/plain', 'text/csv', 'application/octet-stream', ''];
+    var validExts = ['.txt', '.csv', '.lst', '.list'];
+    var ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+    if (validTypes.indexOf(file.type) === -1 && validExts.indexOf(ext) === -1) {
+      toast('Unsupported file type', 'error');
+      return;
+    }
+
+    var reader = new FileReader();
+    reader.onload = function() {
+      var textarea = $('#targets');
+      var existing = textarea.value.trim();
+      textarea.value = existing ? existing + '\n' + reader.result : reader.result;
+      updateTargetCount();
+      toast('Loaded ' + file.name, 'success');
+    };
+    reader.onerror = function() { toast('Could not read this file. Try another file.', 'error'); };
+    reader.readAsText(file);
   }
 
   function saveSettings() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         provider: state.provider,
-        apiKey: state.apiKey,
         size: state.size,
         delay: state.delay
       }));
-    } catch(e) {}
+    } catch(e) {
+      if (!storageWarningShown) { toast('Browser storage unavailable. Settings apply to this tab only.', 'error'); storageWarningShown = true; }
+    }
   }
 
   function loadSettings() {
@@ -536,12 +580,12 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       var cfg = JSON.parse(raw);
-      if (cfg.provider) { state.provider = cfg.provider; $('#provider').value = cfg.provider; }
-      if (cfg.apiKey) { state.apiKey = cfg.apiKey; $('#api-key').value = cfg.apiKey; }
-      if (cfg.size) { state.size = cfg.size; $('#size').value = cfg.size; }
-      if (cfg.delay !== undefined) { state.delay = cfg.delay; $('#delay').value = String(cfg.delay); }
+      if (cfg.provider === 'manual' || PROVIDERS[cfg.provider]) { state.provider = cfg.provider; $('#provider').value = cfg.provider; }
+      if (SIZES[cfg.size]) { state.size = cfg.size; $('#size').value = cfg.size; }
+      if ([0, 2, 5, 10].indexOf(cfg.delay) !== -1) { state.delay = cfg.delay; $('#delay').value = String(cfg.delay); }
       toggleApiKeyField();
-    } catch(e) {}
+      saveSettings();
+    } catch(e) { toast('Saved settings could not be loaded. Using defaults.', 'error'); }
   }
 
   function updateTargetCount() {
@@ -554,6 +598,7 @@
 
   function toggleApiKeyField() {
     $('#api-key-group').hidden = state.provider !== 'urlbox';
+    $('#provider-help').textContent = state.provider === 'urlbox' ? 'Urlbox receives the target URLs and API key. The key is not saved in browser storage. Urlbox previews are excluded from exported reports to protect the key.' : state.provider === 'manual' ? 'Targets open directly in browser tabs. Allow popups for this site when using manual mode.' : 'thum.io receives the target URLs to create screenshots. Use manual mode for targets you do not want to send to a screenshot provider.';
   }
 
   function setupKeyboard() {
@@ -567,6 +612,12 @@
       }
 
       if (!lbHidden) {
+        if (e.key === 'Tab') {
+          var controls = Array.prototype.filter.call($('#lightbox').querySelectorAll('button, a[href]'), function(node) { return node.offsetParent !== null; });
+          var first = controls[0], last = controls[controls.length - 1];
+          if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+          else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+        }
         if (e.key === 'ArrowLeft') { navigateLightbox(-1); e.preventDefault(); }
         if (e.key === 'ArrowRight') { navigateLightbox(1); e.preventDefault(); }
         return;
@@ -585,6 +636,8 @@
     setupKeyboard();
 
     $('#btn-start').addEventListener('click', startScan);
+    $('#btn-import').addEventListener('click', function() { $('#target-file').click(); });
+    $('#target-file').addEventListener('change', function(e) { importFile(e.target.files[0]); e.target.value = ''; });
     $('#btn-clear').addEventListener('click', clearResults);
     $('#btn-export').addEventListener('click', exportReport);
     $('#btn-copy').addEventListener('click', copyDomains);
@@ -596,10 +649,9 @@
       saveSettings();
     });
 
-    $('#api-key').addEventListener('input', debounce(function(e) {
+    $('#api-key').addEventListener('input', function(e) {
       state.apiKey = e.target.value.trim();
-      saveSettings();
-    }, 500));
+    });
 
     $('#size').addEventListener('change', function(e) {
       state.size = e.target.value;
